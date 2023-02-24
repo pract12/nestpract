@@ -13,7 +13,6 @@ const passportModule = PassportModule.register({ defaultStrategy: 'jwt' });
 
 @Module({
   imports: [
-    MongooseModule.forRoot(environment.mongodb),
     MongooseModule.forFeature([
       {
         name: UserSchemaName,
