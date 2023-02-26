@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import {
   Controller,
   Body,
@@ -6,22 +7,20 @@ import {
   Patch,
   Param,
   UseGuards,
-  UseInterceptors,
-  UploadedFile,
+  Req,
 } from '@nestjs/common';
-import { parse } from 'csv-parse';
+import * as fastify from 'fastify';
+import { Multipart } from 'fastify-multipart';
+import * as csv from 'csv-parser';
 import { UserDto } from '../dto/user.dto';
 import { LoginDto } from '../dto/login.dto';
 import { UserService } from '../services/user.service';
 import { AuthGuard } from '@nestjs/passport';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
-import * as fs from 'fs';
-import { CsvParser } from 'nest-csv-parser';
 import { Model } from 'mongoose';
 import { userDocument } from '../schema/user.schema';
 import { InjectModel } from '@nestjs/mongoose';
-import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller()
 export class UserController {
@@ -32,12 +31,12 @@ export class UserController {
 
   @Post('user')
   async createUser(@Body() userDto: UserDto): Promise<void> {
-    await this.userService.registerUser(userDto);
+    return this.userService.registerUser(userDto);
   }
 
   @Post('logInUser')
   async logInUser(@Body() dto: LoginDto): Promise<void> {
-    await this.userService.logIn(dto);
+    return this.userService.logIn(dto);
   }
 
   @Get('verify/:token')
@@ -69,34 +68,31 @@ export class UserController {
     await this.userService.resetPassword(resetPasswordDto, token);
   }
 
+
   @Post('bulkImport')
-  @UseInterceptors(FileInterceptor('file'))
-  async bulkImport(@UploadedFile() file) {
-    const rows: any = await this.getParsedCsv(file);
-    const headers = rows.shift();
-    const data = rows.map((row) => ({
-      [headers[0]]: row[0],
-      [headers[1]]: row[1],
-      [headers[2]]: row[2],
-      [headers[3]]: row[3],
-    }));
+  public async bulkImport(
+    @Req() req: fastify.FastifyRequest,
+  ) {
+    const data: any = await this.getParsedCsv(req);
 
     return data.map((docs) => this.userModel.create(docs));
   }
 
-  private async getParsedCsv(file) {
-    const result = [];
+  private async getParsedCsv(req) {
+      const result = [];
+      const uploadedFile: Multipart<true> = await req.file();
 
-    return new Promise((resolve, reject) => {
-      fs.createReadStream(file.originalname)
-        .pipe(parse({ from_line: 1 }))
-        .on('data', (row) => {
-          result.push(row);
-        })
-        .on('end', () => {
-          resolve(result);
-        })
-        .on('error', reject);
-    });
-  }
+      return new Promise((resolve, reject) => {
+        uploadedFile.file
+          .pipe(csv())
+          .on('data', (row) => {
+            result.push(row);
+          })
+          .on('end', () => {
+            resolve(result);
+          })
+          .on('error', reject);
+      });
+    }
+
 }
